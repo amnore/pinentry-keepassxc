@@ -8,7 +8,7 @@ TODO
 
 ## How it works
 
-See: [wiki](https://github.com/MrChenWithCapsule/pinentry-keepassxc/wiki)
+See: [docs](https://github.com/MrChenWithCapsule/pinentry-keepassxc/tree/main/docs)
 
 ## Other integration utilities for KeePassXC
 
