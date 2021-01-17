@@ -1,9 +1,21 @@
+use lazy_static::lazy_static;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Mutex;
 
-static mut CHILD: Option<Child> = None;
-static mut CHILDOUT: Option<BufReader<ChildStdout>> = None;
-static mut CHILDIN: Option<BufWriter<ChildStdin>> = None;
+lazy_static! {
+    static ref CHILD: Mutex<Child> = Mutex::new(
+        Command::new("pinentry")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    static ref CHILDOUT: Mutex<BufReader<ChildStdout>> =
+        Mutex::new(BufReader::new(CHILD.lock().unwrap().stdout.take().unwrap()));
+    static ref CHILDIN: Mutex<BufWriter<ChildStdin>> =
+        Mutex::new(BufWriter::new(CHILD.lock().unwrap().stdin.take().unwrap()));
+}
 
 pub fn handle_cmd(cmd: &String) -> String {
     // forward command to child
@@ -12,22 +24,6 @@ pub fn handle_cmd(cmd: &String) -> String {
 }
 
 pub fn init() {
-    unsafe {
-        CHILD = Some(
-            Command::new("pinentry")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-                .unwrap(),
-        );
-        CHILDOUT = CHILD
-            .as_mut()
-            .map(|child| BufReader::new(child.stdout.take().unwrap()));
-        CHILDIN = CHILD
-            .as_mut()
-            .map(|child| BufWriter::new(child.stdin.take().unwrap()));
-    }
-
     // Forward hello message
     stdout()
         .write_all(read_child().as_bytes())
@@ -38,32 +34,27 @@ pub fn init() {
  * Write to child
  */
 fn write_child(cmd: &String) {
-    unsafe {
-        let childin = CHILDIN.as_mut().unwrap();
-        childin
-            .write_all(cmd.as_bytes())
-            .expect("Unable to write to child");
-        childin.flush().expect("Unable to flush child");
-    }
+    let mut childin = CHILDIN.lock().unwrap();
+    childin
+        .write_all(cmd.as_bytes())
+        .expect("Unable to write to child");
+    childin.flush().expect("Unable to flush child");
 }
 
 /**
- * Read until we reach the end of a reply.
+ * Read until reaching the end of a reply.
  */
 fn read_child() -> String {
     let mut buf = String::new();
-    let mut begin = buf.len();
-    unsafe {
-        let childout = CHILDOUT.as_mut().unwrap();
-        loop {
-            childout
-                .read_line(&mut buf)
-                .expect("Unable to read from child");
-            let line = &buf[begin..];
-            if line.starts_with("OK ") || line.starts_with("ERR ") || line == "OK\n" {
-                break buf;
-            }
-            begin = buf.len();
+    let mut childout = CHILDOUT.lock().unwrap();
+    loop {
+        let len = buf.len();
+        childout
+            .read_line(&mut buf)
+            .expect("Unable to read from child");
+        let line = &buf[len..];
+        if line.starts_with("OK ") || line.starts_with("ERR ") || line == "OK\n" {
+            break buf;
         }
     }
 }
