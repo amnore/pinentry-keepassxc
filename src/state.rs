@@ -1,7 +1,13 @@
-use ::state::Storage;
+use lazy_static::lazy_static;
+use std::sync::Mutex;
 pub struct State {
-    keygrep: Option<String>,
-    passphrase: Option<String>,
+    pub keygrep: Option<String>,
+    pub passphrase: Option<String>,
 }
 
-static STATE: Storage<State> = Storage::new();
+lazy_static! {
+    pub static ref STATE: Mutex<State> = Mutex::new(State {
+        keygrep: None,
+        passphrase: None
+    });
+}

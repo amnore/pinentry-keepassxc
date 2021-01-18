@@ -1,3 +1,4 @@
+use crate::state::STATE;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
@@ -19,6 +20,7 @@ lazy_static! {
     static ref HANDLER: HashMap<&'static str, fn(&String) -> String> = {
         let mut m: HashMap<&'static str, fn(&String) -> String> = HashMap::new();
         m.insert("BYE", handle_bye);
+        m.insert("SETKEYINFO", handle_setkeyinfo);
         m
     };
 }
@@ -30,11 +32,7 @@ pub fn handle_cmd(cmd: &String) -> String {
         .and_then(|cmd| HANDLER.get(cmd))
     {
         Some(handler) => handler(cmd),
-        None => {
-            // forward command to child
-            write_child(cmd);
-            read_child()
-        }
+        None => handle_default(cmd),
     }
 }
 
@@ -74,12 +72,20 @@ fn read_child() -> String {
     }
 }
 
-fn handle_bye(cmd: &String) -> String {
+fn handle_default(cmd: &String) -> String {
+    // forward to child
     write_child(cmd);
-    let reply = read_child();
+    read_child()
+}
+
+fn handle_bye(cmd: &String) -> String {
+    let reply = handle_default(cmd);
     CHILD.lock().unwrap().wait().expect("Child wasn't running");
     reply
 }
 
-#[cfg(test)]
-mod test {}
+fn handle_setkeyinfo(cmd: &String) -> String {
+    let mut state = STATE.lock().unwrap();
+    (*state).keygrep = Some(String::from(cmd.split_whitespace().nth(1).unwrap()));
+    handle_default(cmd)
+}
