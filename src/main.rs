@@ -13,5 +13,8 @@ fn main() {
             .write_all(reply.as_bytes())
             .expect("Unable to write to output");
         stdout.flush().expect("Unable to flush output");
+        if Some("BYE") == line.split_whitespace().next() {
+            break;
+        }
     }
 }

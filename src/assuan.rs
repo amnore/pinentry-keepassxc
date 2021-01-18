@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
@@ -15,12 +16,26 @@ lazy_static! {
         Mutex::new(BufReader::new(CHILD.lock().unwrap().stdout.take().unwrap()));
     static ref CHILDIN: Mutex<BufWriter<ChildStdin>> =
         Mutex::new(BufWriter::new(CHILD.lock().unwrap().stdin.take().unwrap()));
+    static ref HANDLER: HashMap<&'static str, fn(&String) -> String> = {
+        let mut m: HashMap<&'static str, fn(&String) -> String> = HashMap::new();
+        m.insert("BYE", handle_bye);
+        m
+    };
 }
 
 pub fn handle_cmd(cmd: &String) -> String {
-    // forward command to child
-    write_child(cmd);
-    read_child()
+    match cmd
+        .split_whitespace()
+        .next()
+        .and_then(|cmd| HANDLER.get(cmd))
+    {
+        Some(handler) => handler(cmd),
+        None => {
+            // forward command to child
+            write_child(cmd);
+            read_child()
+        }
+    }
 }
 
 pub fn init() {
@@ -57,6 +72,13 @@ fn read_child() -> String {
             break buf;
         }
     }
+}
+
+fn handle_bye(cmd: &String) -> String {
+    write_child(cmd);
+    let reply = read_child();
+    CHILD.lock().unwrap().wait().expect("Child wasn't running");
+    reply
 }
 
 #[cfg(test)]
