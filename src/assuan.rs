@@ -1,4 +1,6 @@
+use crate::keepassxc::send_encrypt;
 use crate::state::STATE;
+use json::{array, object};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
@@ -21,6 +23,7 @@ lazy_static! {
         let mut m: HashMap<&'static str, fn(&String) -> String> = HashMap::new();
         m.insert("BYE", handle_bye);
         m.insert("SETKEYINFO", handle_setkeyinfo);
+        m.insert("GETPIN", handle_getpin);
         m
     };
 }
@@ -88,4 +91,29 @@ fn handle_setkeyinfo(cmd: &String) -> String {
     let mut state = STATE.lock().unwrap();
     (*state).keygrep = Some(String::from(cmd.split_whitespace().nth(1).unwrap()));
     handle_default(cmd)
+}
+
+fn handle_getpin(cmd: &String) -> String {
+    let state = STATE.lock().unwrap();
+    if state.keygrep.is_none() || state.database_id.is_none() || state.id_key.is_none() {
+        return handle_default(cmd);
+    }
+
+    let message = object! {
+        action: "get-logins",
+        url: (String::from("gpg://") + state.keygrep.as_ref().unwrap()).as_str(),
+        keys: [
+            {
+                id: state.database_id.as_ref().unwrap().as_str(),
+                key: state.id_key.as_ref().unwrap().as_str(),
+            }
+        ]
+    };
+
+    let entries = &send_encrypt(&message)["entries"];
+    if entries.len() == 0 {
+        handle_default(cmd)
+    } else {
+        String::from(entries[0]["password"].as_str().unwrap())
+    }
 }
