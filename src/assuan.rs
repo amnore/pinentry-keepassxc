@@ -1,6 +1,6 @@
-use crate::keepassxc::send_encrypt;
-use crate::state::STATE;
-use json::{array, object};
+use crate::keepassxc::{associate, send_encrypt};
+use crate::state::{DATABASE_ID, ID_KEY, KEYGREP};
+use json::object;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
@@ -88,29 +88,34 @@ fn handle_bye(cmd: &String) -> String {
 }
 
 fn handle_setkeyinfo(cmd: &String) -> String {
-    let mut state = STATE.lock().unwrap();
-    (*state).keygrep = Some(String::from(cmd.split_whitespace().nth(1).unwrap()));
+    let mut keygrep = KEYGREP.lock().unwrap();
+    *keygrep = Some(String::from(cmd.split_whitespace().nth(1).unwrap()));
     handle_default(cmd)
 }
 
 fn handle_getpin(cmd: &String) -> String {
-    let state = STATE.lock().unwrap();
-    if state.keygrep.is_none() || state.database_id.is_none() || state.id_key.is_none() {
+    let keygrep = KEYGREP.lock().unwrap();
+    let database_id = DATABASE_ID.lock().unwrap();
+    let id_key = ID_KEY.lock().unwrap();
+    if keygrep.is_none() {
         return handle_default(cmd);
+    }
+    if database_id.is_none() || id_key.is_none() {
+        associate();
     }
 
     let message = object! {
         action: "get-logins",
-        url: (String::from("gpg://") + state.keygrep.as_ref().unwrap()).as_str(),
+        url: (String::from("gpg://") + keygrep.as_ref().unwrap()).as_str(),
         keys: [
             {
-                id: state.database_id.as_ref().unwrap().as_str(),
-                key: state.id_key.as_ref().unwrap().as_str(),
+                id: database_id.as_ref().unwrap().as_str(),
+                key: id_key.as_ref().unwrap().as_str(),
             }
         ]
     };
 
-    let entries = &send_encrypt(&message)["entries"];
+    let entries = &send_encrypt(&message).unwrap()["entries"];
     if entries.len() == 0 {
         handle_default(cmd)
     } else {

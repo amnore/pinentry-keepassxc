@@ -1,7 +1,9 @@
 use pinentry_keepassxc::assuan;
 use std::io::{stdin, stdout, Write};
+use pinentry_keepassxc::config;
 
 fn main() {
+    config::load();
     assuan::init();
     let stdin = stdin();
     let mut stdout = stdout();
@@ -17,4 +19,5 @@ fn main() {
             break;
         }
     }
+    config::store();
 }
