@@ -1,4 +1,4 @@
-use crate::state::{DATABASE_ID, ID_KEY};
+use crate::state::{DATABASE_ID, ID_KEY, KEYGREP};
 use base64::{decode, encode};
 use crypto_box::{aead::Aead, generate_nonce, PublicKey, SecretKey};
 use directories::ProjectDirs;
@@ -11,6 +11,18 @@ use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::sync::Mutex;
 use xsalsa20poly1305::Nonce;
+
+#[derive(Debug, Clone)]
+struct KeepassXCError(String);
+
+impl std::fmt::Display for KeepassXCError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Error for KeepassXCError {
+}
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -58,7 +70,7 @@ fn send_clear(message: &JsonValue) -> Result<JsonValue> {
     Ok(json::parse(std::str::from_utf8(&buf[..size])?)?)
 }
 
-pub fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
+fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
     let nonce = generate_nonce(&mut thread_rng());
     let keybox = KEYBOX.lock()?;
     let message = object! {
@@ -77,7 +89,7 @@ pub fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
     Ok(json::parse(std::str::from_utf8(response.as_slice())?)?)
 }
 
-pub fn generate_idkey() {
+fn generate_idkey() {
     *ID_KEY.lock().unwrap() = Some(encode(generate_nonce(&mut thread_rng())));
 }
 
@@ -90,7 +102,7 @@ pub fn associate() {
     }
 
     // if we don't yet have an id key, generate one
-    if ID_KEY.lock().unwrap().is_none(){
+    if ID_KEY.lock().unwrap().is_none() {
         generate_idkey();
     }
 
@@ -102,4 +114,39 @@ pub fn associate() {
     };
     let response = send_encrypt(&message).unwrap();
     *database_id = Some(String::from(response["hash"].as_str().unwrap()));
+}
+
+pub fn get_passphrase() -> Result<String> {
+    let keygrep = KEYGREP.lock().unwrap();
+    let database_id = DATABASE_ID.lock().unwrap();
+    let id_key = ID_KEY.lock().unwrap();
+
+    if keygrep.is_none() || database_id.is_none() || id_key.is_none() {
+        return Err(Box::new(KeepassXCError("Did not connect to keepassxc".to_string())))
+    }
+
+    let message = object! {
+        action: "get-logins",
+        url: (String::from("gpg://") + keygrep.as_ref().unwrap()).as_str(),
+        keys: [
+            {
+                id: database_id.as_ref().unwrap().as_str(),
+                key: id_key.as_ref().unwrap().as_str(),
+            }
+        ]
+    };
+
+    let entries = &send_encrypt(&message)?["entries"];
+    if entries.len() == 0 {
+        Err(Box::new(KeepassXCError("No matching entry found".to_string())))
+    } else {
+       Ok(String::from(entries[0]["password"].as_str().unwrap()))
+    }
+}
+
+pub fn init() {
+    if ID_KEY.lock().unwrap().is_none(){
+        generate_idkey();
+    }
+    associate();
 }

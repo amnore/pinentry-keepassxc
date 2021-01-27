@@ -1,6 +1,5 @@
-use crate::keepassxc::{associate, send_encrypt};
-use crate::state::{DATABASE_ID, ID_KEY, KEYGREP};
-use json::object;
+use crate::keepassxc::{get_passphrase};
+use crate::state::{KEYGREP};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
@@ -94,31 +93,9 @@ fn handle_setkeyinfo(cmd: &String) -> String {
 }
 
 fn handle_getpin(cmd: &String) -> String {
-    let keygrep = KEYGREP.lock().unwrap();
-    let database_id = DATABASE_ID.lock().unwrap();
-    let id_key = ID_KEY.lock().unwrap();
-    if keygrep.is_none() {
-        return handle_default(cmd);
-    }
-    if database_id.is_none() || id_key.is_none() {
-        associate();
-    }
-
-    let message = object! {
-        action: "get-logins",
-        url: (String::from("gpg://") + keygrep.as_ref().unwrap()).as_str(),
-        keys: [
-            {
-                id: database_id.as_ref().unwrap().as_str(),
-                key: id_key.as_ref().unwrap().as_str(),
-            }
-        ]
-    };
-
-    let entries = &send_encrypt(&message).unwrap()["entries"];
-    if entries.len() == 0 {
-        handle_default(cmd)
+    if let Ok(passphrase) = get_passphrase() {
+        passphrase
     } else {
-        String::from(entries[0]["password"].as_str().unwrap())
+        handle_default(cmd)
     }
 }

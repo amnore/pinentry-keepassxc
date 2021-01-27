@@ -1,10 +1,12 @@
 use pinentry_keepassxc::assuan;
 use std::io::{stdin, stdout, Write};
 use pinentry_keepassxc::config;
+use pinentry_keepassxc::keepassxc;
 
 fn main() {
     config::load();
     assuan::init();
+    keepassxc::init();
     let stdin = stdin();
     let mut stdout = stdout();
     loop {

@@ -3,7 +3,7 @@ use directories::ProjectDirs;
 use json::{object, parse};
 use lazy_static::lazy_static;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read};
 use std::path::PathBuf;
 
 lazy_static! {
