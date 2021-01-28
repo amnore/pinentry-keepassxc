@@ -94,7 +94,7 @@ fn handle_setkeyinfo(cmd: &String) -> String {
 
 fn handle_getpin(cmd: &String) -> String {
     if let Ok(passphrase) = get_passphrase() {
-        passphrase
+        "D ".to_owned() + passphrase.as_str() + "\nOK\n"
     } else {
         handle_default(cmd)
     }

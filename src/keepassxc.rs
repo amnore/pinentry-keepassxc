@@ -1,4 +1,4 @@
-use crate::state::{ID_KEY, KEYGREP};
+use crate::state::{ID, ID_KEY, KEYGREP};
 use base64::{decode, encode};
 use crypto_box::{aead::Aead, generate_nonce, PublicKey, SecretKey};
 use directories::BaseDirs;
@@ -85,6 +85,7 @@ fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
     let keybox = KEYBOX.lock()?;
     let keybox = keybox.as_ref().ok_or_else(|| KeepassXCError("could not exchange key with keepassxc".to_string()))?;
     let nonce = generate_nonce(&mut thread_rng());
+    eprintln!("encrypt: {}", message);
     let message = object! {
         action: message["action"].as_str().unwrap(),
         message: encode(keybox.encrypt(&nonce, message.dump().as_bytes()).unwrap()),
@@ -103,6 +104,7 @@ fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
             ),
             decode(response["message"].as_str().ok_or_else(|| KeepassXCError::new(&response))?)?.as_slice(),
         ).or_else(|_| Err(KeepassXCError("could not decrypt message".to_string())))?;
+    eprint!("decrypt: {}", std::str::from_utf8(response.as_slice())?);
     Ok(json::parse(std::str::from_utf8(response.as_slice())?)?)
 }
 
@@ -118,16 +120,17 @@ fn associate() -> Result<()> {
         key: encode(PRIVKEY.lock()?.public_key().as_bytes()),
         idKey: ID_KEY.lock()?.as_str(),
     };
-    send_encrypt(&message)?;
+    let response = send_encrypt(&message)?;
 
-    // if no error occurs, then we succeeded
+    *DATABASE_ID.lock()? = Some(response["hash"].as_str().ok_or_else(|| KeepassXCError::new(&response))?.to_string());
+    *ID.lock()? = Some(response["id"].as_str().ok_or_else(|| KeepassXCError::new(&response))?.to_string());
     Ok(())
 }
 
 fn test_associate() -> Result<()> {
     let message = object! {
         action: "test-associate",
-        id: DATABASE_ID.lock()?.as_ref().ok_or_else(|| KeepassXCError("did not connect to keepassxc".to_string()))?.as_str(),
+        id: ID.lock()?.as_ref().ok_or_else(|| KeepassXCError("did not associate".to_string()))?.as_str(),
         key: ID_KEY.lock()?.as_str(),
     };
 
@@ -148,16 +151,16 @@ fn get_databasehash() -> Result<String> {
 pub fn get_passphrase() -> Result<String> {
     let keygrep = KEYGREP.lock()?;
     let keygrep = keygrep.as_ref().ok_or_else(|| KeepassXCError("did not set keygrep".to_string()))?;
-    let database_id = DATABASE_ID.lock()?;
-    let database_id = database_id.as_ref().ok_or_else(|| KeepassXCError("did not associate".to_string()))?;
     let id_key = ID_KEY.lock()?;
+    let id = ID.lock()?;
+    let id = id.as_ref().ok_or_else(|| KeepassXCError("did not associate".to_string()))?;
 
     let message = object! {
         action: "get-logins",
         url: "gpg://".to_string() + &keygrep,
         keys: [
             {
-                id: database_id.as_str(),
+                id: id.as_str(),
                 key: id_key.as_str(),
             }
         ]

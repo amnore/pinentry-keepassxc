@@ -1,4 +1,4 @@
-use crate::state::ID_KEY;
+use crate::state::{ID, ID_KEY};
 use directories::ProjectDirs;
 use json::{object, parse};
 use lazy_static::lazy_static;
@@ -22,19 +22,24 @@ pub fn load() {
             file.read_to_string(&mut conf)
                 .expect("Cannot read config file");
             let obj = parse(&conf).unwrap();
+            *ID.lock().unwrap() = obj["id"].as_str().map(|s| s.to_string());
             *ID_KEY.lock().unwrap() =
-                obj["idKey"].as_str().map(|str| String::from(str)).unwrap();
+                obj["idKey"].as_str().map(|s| s.to_string()).unwrap();
         }
     }
 }
 
 pub fn store() {
-    let idkey = ID_KEY.lock().unwrap();
+    if ID.lock().unwrap().is_none() {
+        return;
+    }
+
     match File::create(CONFIG_PATH.as_path()) {
         Err(_) => (),
         Ok(mut file) => {
             let conf = object! {
-                "idKey": idkey.as_str(),
+                idKey: ID_KEY.lock().unwrap().as_str(),
+                id: ID.lock().unwrap().as_ref().unwrap().as_str(),
             };
             conf.write(&mut file).expect("Cannot write to config file");
         }
