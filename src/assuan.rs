@@ -88,7 +88,7 @@ fn handle_bye(cmd: &String) -> String {
 
 fn handle_setkeyinfo(cmd: &String) -> String {
     let mut keygrep = KEYGREP.lock().unwrap();
-    *keygrep = Some(String::from(cmd.split_whitespace().nth(1).unwrap()));
+    *keygrep = cmd.split_whitespace().nth(1).map(|s| s.to_string());
     handle_default(cmd)
 }
 
