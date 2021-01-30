@@ -1,7 +1,9 @@
-use lazy_static::lazy_static;
 use std::sync::Mutex;
-use xsalsa20poly1305::generate_nonce;
+
+use lazy_static::lazy_static;
 use rand::thread_rng;
+use xsalsa20poly1305::generate_nonce;
+
 lazy_static! {
     pub static ref KEYGREP: Mutex<Option<String>> = Mutex::new(None);
     pub static ref ID: Mutex<Option<String>> = Mutex::new(None);

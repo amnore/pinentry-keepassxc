@@ -1,10 +1,12 @@
-use crate::keepassxc::{get_passphrase};
-use crate::state::{KEYGREP};
-use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
+
+use lazy_static::lazy_static;
+
+use crate::keepassxc::get_passphrase;
+use crate::state::KEYGREP;
 
 lazy_static! {
     static ref CHILD: Mutex<Child> = Mutex::new(

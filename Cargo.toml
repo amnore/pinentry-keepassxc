@@ -14,3 +14,4 @@ xsalsa20poly1305 = "^0.6"
 rand = {version = "^0.7", features = ["getrandom"]}
 base64 = "^0.13"
 directories = "^3.0"
+log = "^0.4"

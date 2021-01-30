@@ -1,16 +1,19 @@
-use crate::state::{ID, ID_KEY, KEYGREP};
+use std::convert::TryInto;
+use std::error::Error;
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
+use std::sync::Mutex;
+
 use base64::{decode, encode};
 use crypto_box::{aead::Aead, generate_nonce, PublicKey, SecretKey};
 use directories::BaseDirs;
 use json::{object, JsonValue};
 use lazy_static::lazy_static;
 use rand::thread_rng;
-use std::convert::TryInto;
-use std::error::Error;
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
-use std::sync::Mutex;
 use xsalsa20poly1305::Nonce;
+use log::{info, error};
+
+use crate::state::{ID, ID_KEY, KEYGREP};
 
 #[derive(Debug, Clone)]
 struct KeepassXCError(String);
@@ -47,7 +50,7 @@ lazy_static! {
 fn get_socketpath() -> std::path::PathBuf {
     let socket = std::path::Path::new("org.keepassxc.KeePassXC.BrowserServer");
     let path = BaseDirs::new().unwrap().runtime_dir().unwrap().join(socket);
-    eprintln!("connect: {:?}", path);
+    info!("connect: {:?}", path);
     path
 }
 
@@ -62,8 +65,13 @@ fn exchange_key() -> Result<crypto_box::Box> {
 
     // try to connect to keepassxc and exchange keys
     let response = send_clear(&message)?;
-    let key = decode(response["publicKey"].as_str().ok_or_else(|| KeepassXCError::new(&response))?)?;
-    let key = TryInto::<[u8; 32]>::try_into(key).or_else(|_| Err(KeepassXCError("wrong format of public key".to_string())))?;
+    let key = decode(
+        response["publicKey"]
+            .as_str()
+            .ok_or_else(|| KeepassXCError::new(&response))?,
+    )?;
+    let key = TryInto::<[u8; 32]>::try_into(key)
+        .or_else(|_| Err(KeepassXCError("wrong format of public key".to_string())))?;
 
     let keepassxc_pubkey = PublicKey::from(key);
     Ok(crypto_box::Box::new(&keepassxc_pubkey, &secret_key))
@@ -71,21 +79,25 @@ fn exchange_key() -> Result<crypto_box::Box> {
 
 fn send_clear(message: &JsonValue) -> Result<JsonValue> {
     let mut stream = STREAM.lock()?;
-    let stream = stream.as_mut().ok_or_else(|| KeepassXCError("could not connect to keepassxc".to_string()))?;
+    let stream = stream
+        .as_mut()
+        .ok_or_else(|| KeepassXCError("could not connect to keepassxc".to_string()))?;
     let mut buf = [0u8; 1024];
 
     writeln!(stream, "{}", message)?;
-    eprintln!("sent: {}", message);
+    info!("sent: {}", message);
     let size = stream.read(&mut buf)?;
-    eprintln!("read: {}", std::str::from_utf8(&buf[..size])?);
+    info!("read: {}", std::str::from_utf8(&buf[..size])?);
     Ok(json::parse(std::str::from_utf8(&buf[..size])?)?)
 }
 
 fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
     let keybox = KEYBOX.lock()?;
-    let keybox = keybox.as_ref().ok_or_else(|| KeepassXCError("could not exchange key with keepassxc".to_string()))?;
+    let keybox = keybox
+        .as_ref()
+        .ok_or_else(|| KeepassXCError("could not exchange key with keepassxc".to_string()))?;
     let nonce = generate_nonce(&mut thread_rng());
-    eprintln!("encrypt: {}", message);
+    info!("encrypt: {}", message);
     let message = object! {
         action: message["action"].as_str().unwrap(),
         message: encode(keybox.encrypt(&nonce, message.dump().as_bytes()).unwrap()),
@@ -100,11 +112,18 @@ fn send_encrypt(message: &JsonValue) -> Result<JsonValue> {
                     response["nonce"]
                         .as_str()
                         .ok_or_else(|| KeepassXCError::new(&response))?,
-                )?.as_slice(),
+                )?
+                .as_slice(),
             ),
-            decode(response["message"].as_str().ok_or_else(|| KeepassXCError::new(&response))?)?.as_slice(),
-        ).or_else(|_| Err(KeepassXCError("could not decrypt message".to_string())))?;
-    eprint!("decrypt: {}", std::str::from_utf8(response.as_slice())?);
+            decode(
+                response["message"]
+                    .as_str()
+                    .ok_or_else(|| KeepassXCError::new(&response))?,
+            )?
+            .as_slice(),
+        )
+        .or_else(|_| Err(KeepassXCError("could not decrypt message".to_string())))?;
+    info!("decrypt: {}", std::str::from_utf8(response.as_slice())?);
     Ok(json::parse(std::str::from_utf8(response.as_slice())?)?)
 }
 
@@ -122,8 +141,18 @@ fn associate() -> Result<()> {
     };
     let response = send_encrypt(&message)?;
 
-    *DATABASE_ID.lock()? = Some(response["hash"].as_str().ok_or_else(|| KeepassXCError::new(&response))?.to_string());
-    *ID.lock()? = Some(response["id"].as_str().ok_or_else(|| KeepassXCError::new(&response))?.to_string());
+    *DATABASE_ID.lock()? = Some(
+        response["hash"]
+            .as_str()
+            .ok_or_else(|| KeepassXCError::new(&response))?
+            .to_string(),
+    );
+    *ID.lock()? = Some(
+        response["id"]
+            .as_str()
+            .ok_or_else(|| KeepassXCError::new(&response))?
+            .to_string(),
+    );
     Ok(())
 }
 
@@ -145,15 +174,22 @@ fn get_databasehash() -> Result<String> {
     };
 
     let response = send_encrypt(&message)?;
-    Ok(response["hash"].as_str().ok_or_else(|| KeepassXCError::new(&response))?.to_string())
+    Ok(response["hash"]
+        .as_str()
+        .ok_or_else(|| KeepassXCError::new(&response))?
+        .to_string())
 }
 
 pub fn get_passphrase() -> Result<String> {
     let keygrep = KEYGREP.lock()?;
-    let keygrep = keygrep.as_ref().ok_or_else(|| KeepassXCError("did not set keygrep".to_string()))?;
+    let keygrep = keygrep
+        .as_ref()
+        .ok_or_else(|| KeepassXCError("did not set keygrep".to_string()))?;
     let id_key = ID_KEY.lock()?;
     let id = ID.lock()?;
-    let id = id.as_ref().ok_or_else(|| KeepassXCError("did not associate".to_string()))?;
+    let id = id
+        .as_ref()
+        .ok_or_else(|| KeepassXCError("did not associate".to_string()))?;
 
     let message = object! {
         action: "get-logins",
@@ -167,11 +203,13 @@ pub fn get_passphrase() -> Result<String> {
     };
 
     let entries = &send_encrypt(&message)?["entries"];
-    Ok(String::from(entries[0]["password"].as_str().ok_or_else(|| KeepassXCError("no matching entry found".to_string()))?))
+    Ok(String::from(entries[0]["password"].as_str().ok_or_else(
+        || KeepassXCError("no matching entry found".to_string()),
+    )?))
 }
 
 pub fn init() {
     if let Err(e) = associate() {
-        eprintln!("{}", e);
+        error!("{}", e);
     }
 }
