@@ -13,6 +13,7 @@ lazy_static! {
         Command::new("pinentry")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .args(std::env::args())
             .spawn()
             .unwrap(),
     );

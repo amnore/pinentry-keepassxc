@@ -16,7 +16,11 @@ fn main() {
     let stdin = stdin();
     let mut stdout = stdout();
 
-    // log env variables
+    // log args and env variables
+    info!("args:");
+    for arg in env::args() {
+        info!("{}", arg);
+    }
     info!("environment variables:");
     for (k, v) in env::vars() {
         info!("{}={}", k, v);
