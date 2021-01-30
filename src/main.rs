@@ -9,7 +9,9 @@ use pinentry_keepassxc::keepassxc;
 use pinentry_keepassxc::logging;
 
 fn main() {
-    logging::init();
+    if cfg!(debug_assertions) {
+        logging::init();
+    }
     config::load();
     assuan::init();
     keepassxc::init();
