@@ -11,7 +11,7 @@ use crate::state::{ID, ID_KEY};
 lazy_static! {
     static ref BASEDIRS: BaseDirs = BaseDirs::new().unwrap();
     static ref CONFIG_PATH: PathBuf =
-        PathBuf::from(BASEDIRS.config_dir().join("pinentry-keepassxc"));
+        PathBuf::from(BASEDIRS.config_dir().join("pinentry-keepassxcrc"));
 }
 
 pub fn load() {

@@ -1,6 +1,6 @@
 [package]
 name = "pinentry-keepassxc"
-version = "0.2.1"
+version = "0.3.1"
 authors = ["Chen Zhenge <Mr.ChenWithCapsule@outlook.com>"]
 edition = "2018"
 
