@@ -9,6 +9,7 @@
 # Added by cargo
 
 /target
+/result
 
 # nvim
 .nvimlog
